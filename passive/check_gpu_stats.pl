@@ -26,15 +26,18 @@ use Getopt::Std;
 ###############################################################################
 ## V. 1.0.0: Inital version                                         20160506 ##
 ## V. 1.0.1: Release under ISC license                              20160721 ##
+## V. 1.0.2: Fix to work with cards that have fans (M4000 Quadro)   20160901 ##
+## V. 1.1.0: Changed to use nvidia-smi -q, measure encoder util     20160901 ##
 ###############################################################################
-my $version = '1.0.1';
-my $version_date = '2016-07-21';
+my $version = '1.1.0';
+my $version_date = '2016-09-01';
 
 ###############################################################################
 ## Variables and defaults
 ###############################################################################
 
 my $nvidiasmi = qx(which nvidia-smi);
+chomp $nvidiasmi;
 my $verbose = 0;
 my $hostname = qx(hostname);
 my $multiplexer = '/usr/local/bin/nsca_multiplexer.sh';
@@ -44,6 +47,8 @@ my ( %opt, @wopt, @copt );
 
 my $i = 0;
 my $j = 0;
+my $rammax; #ram numbers are in the wrong order 
+my $ngpus = 0;
 my @stats;
 
 my %tot = ( 'temp' => 0, 'pwr' => 0, 'pwr_pct' => 0, 'ram' => 0, 'ram_pct' => 0, 'util' => 0 );
@@ -96,12 +101,12 @@ if ( defined $opt{'c'} )
 ###############################################################################
 
 # Retrieve and handle data
-my @data = split /\n/, qx($nvidiasmi);
+my @data = split /\n/, qx($nvidiasmi -q);
 
 for (@data)
 {
 	#( $temp, $watts_draw, $watts_pct, $ram_used, $ram_pct, $util ) = ('','','','','','');
-	if ( /\| N\/A.*?(\d+)C.*?(\d+)W \/ (\d+)W.*?(\d+)MiB.*?(\d+)MiB.*?(\d+)%/ )
+	if ( /\| (?:N\/A|\d+%).*?(\d+)C.*?(\d+)W \/ (\d+)W.*?(\d+)MiB.*?(\d+)MiB.*?(\d+)%/ )
 	{
 		$verbose and print STDERR "GPU ${i}: $1 degrees, $2/$3 watts used, $4/$5 MB ram used, $6% utilized\n";
 		$stats[$i]{'temp'} = $1;
@@ -112,7 +117,17 @@ for (@data)
 		$stats[$i]{'util'} = $6;
 		$i+=1; 
 	}
+	/Attached GPUs.*?: (\d+)/ and $i = -1 and $ngpus = $1; #If we find this line, nvidia-smi is running with -q
+	/GPU [0-9:\.]+$/ and $i++;
+	/GPU Current Temp.*?: (\d+) C/ and $stats[$i]{'temp'} = $1;
+	/Power Draw.*?: ([\d\.]+) W/ and $stats[$i]{'pwr'} = $1;
+	/Power Limit.*?: ([\d\.]+) W/ and $stats[$i]{'pwr_pct'} = $stats[$i]{'pwr'}/$1;
+	/Used.*?: ([\d\.]+) MiB/ and ! defined $stats[$i]{'ram'} and $stats[$i]{'ram'} = $1 and $stats[$i]{'ram_pct'} = $1/$rammax;
+	/Total.*?: ([\d\.]+) MiB/ and $rammax = $1;
+	/Encoder.*?: ([\d\.]+) %/ and $stats[$i]{'util'} = $1;
 }
+#if we used -q, $i will be 1 lower than the number of gpus.
+$ngpus and $i = $ngpus;
 
 #total
 for ( my $j = 0; $j < $i; $j ++ )
@@ -160,7 +175,11 @@ for my $key (keys %avg)
 	$avg{"$key"} =~ s/(\d+\.\d\d)\d+/$1/;
 }
 
+#debug output of final lines.
 $verbose and print join "\t", ${hostname}, "${service}_POWER", $ret{'pwr'}, "$ret_human[$ret{'pwr'}]: average power usage is $avg{'pwr'}W ($avg{'pwr_pct'}%)$perf{'pwr'}\n";
+$verbose and print join "\t", ${hostname}, "${service}_TEMP", $ret{'temp'}, "$ret_human[$ret{'temp'}]: average temperature is $avg{'temp'}C$perf{'temp'}\n";
+$verbose and print join "\t", ${hostname}, "${service}_MEM", $ret{'ram'}, "$ret_human[$ret{'ram'}]: average memory usage is $avg{'ram'}MB ($avg{'ram_pct'}%)$perf{'ram'}\n";
+$verbose and print join "\t", ${hostname}, "${service}_UTIL", $ret{'util'}, "$ret_human[$ret{'util'}]: average GPU utilization is $avg{'util'}%$perf{'util'}\n";
 
 #printout
 open MX, "| $multiplexer";
