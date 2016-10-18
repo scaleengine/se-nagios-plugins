@@ -57,6 +57,12 @@ Gets a count of the number of IP's blocked by denyhosts
 
 Gets utilization information from nvidia-smi.  Known to work with a Grid K20.
 
+### check_mdadm.pl
+
+Gets the status of all md devices on the host.  Works on CentOS 7, should work on any linux AFAIK.
+
+Requires a wrapper around mdadm --status to run as non-priviledged user, see the bottom of the script for an example.
+
 ### check_nagiostats.pl 
 
 Parses the output of nagiostats and submits as a passive check.  Note that this must be run on the nagios server itself.  Running it passively is done to get stats from other nagioses via the multiplexer.

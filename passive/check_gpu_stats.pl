@@ -28,9 +28,10 @@ use Getopt::Std;
 ## V. 1.0.1: Release under ISC license                              20160721 ##
 ## V. 1.0.2: Fix to work with cards that have fans (M4000 Quadro)   20160901 ##
 ## V. 1.1.0: Changed to use nvidia-smi -q, measure encoder util     20160901 ##
+## V. 1.1.1: Bugfix - fix -w and -c in getopts                      20160912 ##
 ###############################################################################
-my $version = '1.1.0';
-my $version_date = '2016-09-01';
+my $version = '1.1.1';
+my $version_date = '2016-09-12';
 
 ###############################################################################
 ## Variables and defaults
@@ -71,7 +72,7 @@ sub HELP_MESSAGE { print "get_gpu_stats.pl [-v] [-w warnp,warnr,warnt,warnu] [-c
 ## Getopts and validation
 ###############################################################################
 
-getopts 'f:vVht:C:', \%opt;
+getopts 'f:vVht:C:w:c:', \%opt;
 defined $opt{'v'} and $verbose = 1;
 defined $opt{'H'} and $hostname = $opt{'H'};
 defined $opt{'S'} and $hostname = $opt{'S'};
