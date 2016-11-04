@@ -25,9 +25,10 @@ use Getopt::Std;
 ## OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE             ##
 ###############################################################################
 ## V. 1.0.0: Initial release                                        20160913 ##
+## V. 1.0.1: Fix to handle resyncing arrays.                        20161031 ##
 ###############################################################################
-my $version = '1.0.0';
-my $version_date = '2016-09-13';
+my $version = '1.0.1';
+my $version_date = '2016-10-31';
 
 
 ###############################################################################
@@ -120,7 +121,8 @@ sub getstatus
 		for (split /\n/, $out)
 		{
 			verb 2, "Line: $_";
-			/State : ([A-Za-z]+)[\s].?$/ and $mds{$md}{state} = $1 and verb 1, "Found state: $1";
+			/State : ([A-Za-z]+)(, resyncing)?[\s].?$/ and $mds{$md}{state} = $1 and verb 1, "Found state: $1";
+			/Resync Status : (\d+)% complete/ and $mds{$md}{resync} = $1 and verb 1, "Found resync: $1";
 			/Active Devices : (\d+)$/ and $mds{$md}{active} = $1 and verb 1, "Found active devices: $1";
 			/Working Devices : (\d+)$/ and $mds{$md}{working} = $1 and verb 1, "Found working devices: $1";
 		}
@@ -151,6 +153,13 @@ for (keys %mds)
 
 	$perf .= "$_=$mds{$_}{working}/$mds{$_}{active} ";
 	verb 1, "$_=$mds{$_}{working}/$mds{$_}{active} ";
+
+	if ( defined $mds{$_}{resync} )
+	{
+		verb 1, "$_ resyncing";
+		$output .= " $_ is resyncing, $mds{$_}{resync}% complete";
+		$ret != 2 and $ret = 1;
+	}
 
 	$mds{$_}{state} =~ /^(clean(, checking)?|active)$/ and next; #ok states
 	if ( $mds{$_}{state} =~ /degraded/ )
