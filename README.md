@@ -33,6 +33,10 @@ Connects to an RTG's MySQL database and gets bandwidth quota usage information. 
 
 Requires PHP and  MySQL dbd
 
+### influx_stats.pl
+
+Pulls status information from influxdb.  Checks heap memory usage.
+
 ### nagios_active_puppet.sh 
 
 Uses the REST API to check if a puppetmaster is running.  Works with Puppet 3.x.x, has not been tested against 4.x.x
@@ -92,6 +96,11 @@ Checks the age of a zfs snapshot.  This check has yet to be used in production, 
 ### nagios_zpool_status_passive.sh 
 
 Checks on the health of a zpool.
+
+### netspeed_passive.pl
+
+Checks the speed of an interface.  Will report the aggregate speed of an LACP interface.
+Created because net-snmp sometimes fails to report when an interface is negotiated to reduced speed.
 
 ### nsca_multiplexer.sh 
 
