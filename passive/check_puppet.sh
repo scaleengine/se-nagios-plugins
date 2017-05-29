@@ -113,7 +113,7 @@ usage () {
   exit 1
 }
 
-while getopts "c:d:s:w:H:" opt; do
+while getopts "c:d:s:w:H:l:r:" opt; do
   case $opt in
     c)
       if ! echo $OPTARG | grep -q "[A-Za-z]" && [ -n "$OPTARG" ]
