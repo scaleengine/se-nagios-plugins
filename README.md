@@ -77,6 +77,10 @@ Parses puppet's last_run_state.yaml file to determine if the run failed.  Note t
 
 This check is not our original work.  The author is Alexander Swen (a@swen.nu).  We've modified it to run as a passive check, and to work on FreeBSD in keeping with the terms of the original licence (ISC)
 
+### check_smart.pl
+
+Checks the output of smartctl and reports it to nagios
+
 ### nagios_file_age_check.sh 
 
 Checks the age of a file using stat, warns if the mtime is too old.  Useful for watching replication by changing a file on the master from cron, and watching the age on the slave.

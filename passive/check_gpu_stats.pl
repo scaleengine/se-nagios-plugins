@@ -29,9 +29,10 @@ use Getopt::Std;
 ## V. 1.0.2: Fix to work with cards that have fans (M4000 Quadro)   20160901 ##
 ## V. 1.1.0: Changed to use nvidia-smi -q, measure encoder util     20160901 ##
 ## V. 1.1.1: Bugfix - fix -w and -c in getopts                      20160912 ##
+## V. 1.2.0: Measure both encode and decode for util                20170410 ##
 ###############################################################################
-my $version = '1.1.1';
-my $version_date = '2016-09-12';
+my $version = '1.2.0';
+my $version_date = '2017-04-10';
 
 ###############################################################################
 ## Variables and defaults
@@ -52,8 +53,8 @@ my $rammax; #ram numbers are in the wrong order
 my $ngpus = 0;
 my @stats;
 
-my %tot = ( 'temp' => 0, 'pwr' => 0, 'pwr_pct' => 0, 'ram' => 0, 'ram_pct' => 0, 'util' => 0 );
-my %avg = ( 'temp' => 0, 'pwr' => 0, 'pwr_pct' => 0, 'ram' => 0, 'ram_pct' => 0, 'util' => 0 );
+my %tot = ( 'temp' => 0, 'pwr' => 0, 'pwr_pct' => 0, 'ram' => 0, 'ram_pct' => 0, 'util' => 0, 'util_e' => 0, 'util_d' => 0 );
+my %avg = ( 'temp' => 0, 'pwr' => 0, 'pwr_pct' => 0, 'ram' => 0, 'ram_pct' => 0, 'util' => 0, 'util_e' => 0, 'util_d' => 0 );
 my %perf = ( 'pwr' => '|', 'temp' => '|', 'ram' => '|', 'util' => '|' );
 my %warn = ( 'pwr' => 75, 'temp' => 50, 'ram' => 75, 'util' => 75 );
 my %crit = ( 'pwr' => 90, 'temp' => 75, 'ram' => 90, 'util' => 90 );
@@ -125,7 +126,8 @@ for (@data)
 	/Power Limit.*?: ([\d\.]+) W/ and $stats[$i]{'pwr_pct'} = $stats[$i]{'pwr'}/$1;
 	/Used.*?: ([\d\.]+) MiB/ and ! defined $stats[$i]{'ram'} and $stats[$i]{'ram'} = $1 and $stats[$i]{'ram_pct'} = $1/$rammax;
 	/Total.*?: ([\d\.]+) MiB/ and $rammax = $1;
-	/Encoder.*?: ([\d\.]+) %/ and $stats[$i]{'util'} = $1;
+	/Encoder.*?: ([\d\.]+) %/ and $stats[$i]{'util_e'} = $1;
+	/Decoder.*?: ([\d\.]+) %/ and $stats[$i]{'util_d'} = $1;
 }
 #if we used -q, $i will be 1 lower than the number of gpus.
 $ngpus and $i = $ngpus;
@@ -138,12 +140,13 @@ for ( my $j = 0; $j < $i; $j ++ )
 	$tot{'pwr_pct'} += $stats[$j]{'pwr_pct'};
 	$tot{'ram'} += $stats[$j]{'ram'};
 	$tot{'ram_pct'} += $stats[$j]{'ram_pct'};
-	$tot{'util'} += $stats[$j]{'util'};
+	$tot{'util_e'} += $stats[$j]{'util_e'};
+	$tot{'util_d'} += $stats[$j]{'util_d'};
 
 	$perf{'pwr'} .= "gpu${j}=$stats[$j]{'pwr'} ";
 	$perf{'temp'} .= "gpu${j}=$stats[$j]{'temp'} ";
 	$perf{'ram'} .= "gpu${j}=$stats[$j]{'ram'} ";
-	$perf{'util'} .= "gpu${j}=$stats[$j]{'util'} ";
+	$perf{'util'} .= "gpu${j}=$stats[$j]{'util_e'},$stats[$j]{'util_d'} ";
 }
 
 #append warn and crit
@@ -158,7 +161,9 @@ $avg{'pwr'} = $tot{'pwr'} / $i;
 $avg{'pwr_pct'} = $tot{'pwr_pct'} / $i;
 $avg{'ram'} = $tot{'ram'} / $i;
 $avg{'ram_pct'} = $tot{'ram_pct'} / $i;
-$avg{'util'} = $tot{'util'} / $i;
+$avg{'util_e'} = $tot{'util_e'} / $i;
+$avg{'util_d'} = $tot{'util_d'} / $i;
+$avg{'util'} = ( $avg{'util_e'} > $avg{'util_d'} ) ? $avg{'util_e'} : $avg{'util_d'};
 
 #Generate return codes
 for my $key (keys %perf)
@@ -180,7 +185,7 @@ for my $key (keys %avg)
 $verbose and print join "\t", ${hostname}, "${service}_POWER", $ret{'pwr'}, "$ret_human[$ret{'pwr'}]: average power usage is $avg{'pwr'}W ($avg{'pwr_pct'}%)$perf{'pwr'}\n";
 $verbose and print join "\t", ${hostname}, "${service}_TEMP", $ret{'temp'}, "$ret_human[$ret{'temp'}]: average temperature is $avg{'temp'}C$perf{'temp'}\n";
 $verbose and print join "\t", ${hostname}, "${service}_MEM", $ret{'ram'}, "$ret_human[$ret{'ram'}]: average memory usage is $avg{'ram'}MB ($avg{'ram_pct'}%)$perf{'ram'}\n";
-$verbose and print join "\t", ${hostname}, "${service}_UTIL", $ret{'util'}, "$ret_human[$ret{'util'}]: average GPU utilization is $avg{'util'}%$perf{'util'}\n";
+$verbose and print join "\t", ${hostname}, "${service}_UTIL", $ret{'util'}, "$ret_human[$ret{'util'}]: average GPU utilization is $avg{'util_e'}%/$avg{'util_d'}% (encode/decode)$perf{'util'}\n";
 
 #printout
 open MX, "| $multiplexer";
@@ -189,6 +194,6 @@ open MX, "| $multiplexer";
 print MX join "\t", ${hostname}, "${service}_POWER", $ret{'pwr'}, "$ret_human[$ret{'pwr'}]: average power usage is $avg{'pwr'}W ($avg{'pwr_pct'}%)$perf{'pwr'}\n\x17";
 print MX join "\t", ${hostname}, "${service}_TEMP", $ret{'temp'}, "$ret_human[$ret{'temp'}]: average temperature is $avg{'temp'}C$perf{'temp'}\n\x17";
 print MX join "\t", ${hostname}, "${service}_MEM", $ret{'ram'}, "$ret_human[$ret{'ram'}]: average memory usage is $avg{'ram'}MB ($avg{'ram_pct'}%)$perf{'ram'}\n\x17";
-print MX join "\t", ${hostname}, "${service}_UTIL", $ret{'util'}, "$ret_human[$ret{'util'}]: average GPU utilization is $avg{'util'}%$perf{'util'}\n";
+print MX join "\t", ${hostname}, "${service}_UTIL", $ret{'util'}, "$ret_human[$ret{'util'}]: average GPU utilization is $avg{'util_e'}%/$avg{'util_d'}% (encode/decode)$perf{'util'}\n";
 
 close MX;

@@ -29,13 +29,17 @@ use Getopt::Std;
 ###############################################################################
 ## V. 1.0.0: Initial release                                        20170117 ##
 ## V. 1.0.1: Fix regexes for non-autoselect interfaces              20170120 ##
+## V. 1.0.2: Remove push on reference - deprecated                  20170626 ##
+## V. 1.0.3: Fix regex for new FreeBSD versions                     20170721 ##
+## V. 1.0.4: Fix regex for drivers that use the wrong case          20170814 ##
+## V. 1.0.5: Ensure laggports are marked ACTIVE                     20170831 ##
 ###############################################################################
 ## TODO: input validation                                                    ##
 ## TODO: check status reported by ifconfig/ethtool                           ##
 ## TODO: Failover interfaces will always show as having a slave down         ##
 ###############################################################################
-my $version = '1.0.1';
-my $version_date = '2017-01-20';
+my $version = '1.0.5';
+my $version_date = '2017-08-31';
 
 
 ###############################################################################
@@ -59,6 +63,7 @@ chomp $multiplexer;
 my @lines;
 my $int;
 my %interface;
+my $tmp;
 
 ###############################################################################
 ## Subroutine definitions
@@ -231,13 +236,13 @@ for (@lines)
 		$interface{$int}{slave} = [];
 		verb 1, "Found interface: $int";
 	}
-	elsif ( /media: Ethernet (?:autoselect \()?(\d+)Gbase/ )
+	elsif ( /media: Ethernet (?:autoselect .*?\()?(\d+)G[bB]ase/ )
 	{
 		#10Gb interfaces report as '10Gbase...'
 		$interface{$int}{speed} = ( $1 * 1000 );
 		verb 1, "$int speed is ${1}G";
 	}
-	elsif ( /media: Ethernet (?:autoselect \()?(\d+)base/ )
+	elsif ( /media: Ethernet (?:autoselect .*?\()?(\d+)[bB]ase/ )
 	{
 		$interface{$int}{speed} = $1;
 		verb 1, "$int speed is $1";
@@ -253,10 +258,14 @@ for (@lines)
 		$interface{$int}{parent} = $1;
 		verb 1, "$int parent is $1";
 	}
-	elsif ( /laggport: ([a-zA-Z0-9]+) / )
+	elsif ( /laggport: ([a-zA-Z0-9]+) flags=.*?<(.*?)>/ )
 	{
-		verb 1, "$int slave is $1";
-		push $interface{$int}{slave}, $1;
+		$tmp = $1;	
+		if ( $2 =~ /ACTIVE/ )
+		{
+			verb 1, "$int slave is $tmp";
+			push @{$interface{$int}{slave}}, $tmp;
+		}
 	}
 }
 
