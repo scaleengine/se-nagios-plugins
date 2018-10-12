@@ -53,6 +53,10 @@ check_gpu_stats.pl is only tested on CentOS 7.
 
 Gets the output of 'rndc stats' and submits to nagios.
 
+### check_carp.pl
+
+Checks the status of CARPed IPs.  Makes sure they are up and in the desired state (master/slave).  Because this check relies on parsing ifconfig, it will only work on FreeBSD.
+
 ### check_denyhosts.pl 
 
 Gets a count of the number of IP's blocked by denyhosts
@@ -70,6 +74,10 @@ Requires a wrapper around mdadm --status to run as non-priviledged user, see the
 ### check_nagiostats.pl 
 
 Parses the output of nagiostats and submits as a passive check.  Note that this must be run on the nagios server itself.  Running it passively is done to get stats from other nagioses via the multiplexer.
+
+### check_process_cpu.pl
+
+Gets cpu usage information out of procstat for a named process.  Can use sudo to run as non-root, but monitor processes belonging to root.  Uses --libxo options that require FreeBSD 10+.
 
 ### check_puppet.sh 
 
