@@ -63,7 +63,11 @@ Gets a count of the number of IP's blocked by denyhosts
 
 ### check_gpu_stats.pl 
 
-Gets utilization information from nvidia-smi.  Known to work with a Grid K20.
+Gets utilization information from nvidia-smi.  Known to work with a Grid K20, K4000, and M4000
+
+### check_java_threads.pl
+
+Gets a stack dump of a matching java process with jstack, and reports the states of the threads.  Will warn/crit if too many threads are blocked.
 
 ### check_mdadm.pl
 
