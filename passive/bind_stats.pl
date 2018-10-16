@@ -88,7 +88,7 @@ sub HELP_MESSAGE
 
 sub VERSION_MESSAGE
 {
-	print "$0 version $version by Andrew Fengler (andrew.fengler\@scaleengine.net), $version_date\n";
+	print "$0 version $version by Andrew Fengler (andrew.fengler\@scaleengine.com), $version_date\n";
 	exit;
 }
 
