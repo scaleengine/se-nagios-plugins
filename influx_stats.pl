@@ -1,12 +1,10 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-no if ($] >= 5.018), 'warnings' => 'experimental';
 
 use LWP;
 use JSON;
 use Getopt::Std;
-use 5.014;  # so push/pop/etc work on scalars (experimental)
 
 
 ###############################################################################
@@ -30,9 +28,10 @@ use 5.014;  # so push/pop/etc work on scalars (experimental)
 ## OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE             ##
 ###############################################################################
 ## V. 1.0.0: Initial release                                        20170124 ##
+## V. 1.1.0: Remove depricated push/shift on scalar                 20181016 ##
 ###############################################################################
-my $version = '1.0.0';
-my $version_date = '2017-01-24';
+my $version = '1.1.0';
+my $version_date = '2018-10-16';
 
 
 ###############################################################################
@@ -113,8 +112,8 @@ sub data_scrape ($$)
 	while ( $i )
 	{
 		$i--;
-		$key = shift $in_ref->{results}->[0]->{series}->[0]->{columns} or last;
-		$value = shift $in_ref->{results}->[0]->{series}->[0]->{values}->[0] or last;
+		$key = shift %{$in_ref->{results}[0]{series}[0]{columns}} or last;
+		$value = shift %{$in_ref->{results}[0]{series}[0]{values}[0]} or last;
 
 		verb 1, "Got datapoint: $key => $value";
 		
