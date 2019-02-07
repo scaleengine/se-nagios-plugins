@@ -52,28 +52,26 @@
 # 20131209  Mark Ruys   Issue warning when last_run_report.yaml contain errors.
 # 20141015  A.Swen      Add show disabled status.
 # 20141127  KissT       Remove requirement to have sudo custom rule 
-# SETTINGS
-
+#
+# Andrew Fengler
 # Some changes to make this script work with FreeBSD
-# 2015-07-09 Andrew Fengler
-#	Changed references to `/usr/bin/puppet' to `$PUPPET'
-#	removed unnecesary sudo calls
-#	Removed unnecesary extra steps with the pidfile
-#	Made the date call work on BSD
-#	Changed interpreter to /bin/sh
-#	Set check to submit passively
-# 2015-07-21 Andrew Fengler:
-#	Added puppet runtime to perfdata and message
-# 2015-07-23 Andrew Fengler
-#	Changed passive check to run through nsca_multiplexer.sh
-# 2016-03-04 Andrew Fengler
-#	Added selection structures to allow date and paths to work on both FreeBSD and Linux
-#	Fixed time_taken check to use awk
-# 2016-04-05 Andrew Fengler
-#	Added perfdata to warning and critical states (results 2,3,6)
-#	Moved result 2 and 3 to after yaml parsing
+# 2015-07-09   Changed references to `/usr/bin/puppet' to `$PUPPET'
+#              removed unnecesary sudo calls
+#              Removed unnecesary extra steps with the pidfile
+#              Made the date call work on FreeBSD
+#              Changed interpreter to /bin/sh
+#              Set check to submit passively
+# 2015-07-21   Added puppet runtime to perfdata and message
+# 2015-07-23   Changed passive check to run through nsca_multiplexer.sh
+# 2016-03-04   Added selection structures to allow date and paths to work on both FreeBSD and Linux
+#              Fixed time_taken check to use awk
+# 2016-04-05   Added perfdata to warning and critical states (results 2,3,6)
+#              Moved result 2 and 3 to after yaml parsing
+# 2019-02-07   Fix puppet config print command to use --section agent so you actually get the agent's pid
+#              Set default pidfile location based on uname since I doubt that's the only pitfall we'll get from puppet print config
 
 
+# SETTINGS
 CRIT=7200
 WARN=3600
 service=""
@@ -176,8 +174,13 @@ if [ ${daemonized} -eq 1 ];then
   # check puppet daemon:
   # I only know the cmd lines for Debian and CentOS/RedHat:
   #[ "$(ps axf|egrep "/usr/bin/ruby /usr/sbin/puppetd|/usr/bin/ruby1.8 /usr/bin/puppet agent|/usr/bin/ruby /usr/bin/puppet agent"|grep -v grep)" ] || result 4
-  pidfile=/var/run/puppet/agent.pid
-  [ -e ${pidfile} ]||pidfile=$($PUPPET config print pidfile)
+  if [ "$(uname)" = "Linux" ]
+  then
+    pidfile=/var/lib/puppet/run/agent.pid
+  else
+    pidfile=/var/run/puppet/agent.pid
+  fi
+  [ -e ${pidfile} ]||pidfile=$($PUPPET config print pidfile --section agent)
   # if there is a pidfile tell me the pid, else fail
   [ -f ${pidfile} ]&&pid=$(cat ${pidfile})||result 4
   # see if the process is running
