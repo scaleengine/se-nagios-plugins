@@ -68,7 +68,7 @@
 # 2016-04-05   Added perfdata to warning and critical states (results 2,3,6)
 #              Moved result 2 and 3 to after yaml parsing
 # 2019-02-07   Fix puppet config print command to use --section agent so you actually get the agent's pid
-#              Set default pidfile location based on uname since I doubt that's the only pitfall we'll get from puppet print config
+#              Try a couple different possible pidfile locations to avoid relying on puppet config print
 
 
 # SETTINGS
@@ -171,18 +171,13 @@ fi
 [ -n "${daemonized}" ] || daemonized=1
 # if Puppet agent runs as a daemon there should be a process. We can't check so much when it is triggered by cron.
 if [ ${daemonized} -eq 1 ];then
-  # check puppet daemon:
-  # I only know the cmd lines for Debian and CentOS/RedHat:
-  #[ "$(ps axf|egrep "/usr/bin/ruby /usr/sbin/puppetd|/usr/bin/ruby1.8 /usr/bin/puppet agent|/usr/bin/ruby /usr/bin/puppet agent"|grep -v grep)" ] || result 4
-  if [ "$(uname)" = "Linux" ]
-  then
-    pidfile=/var/lib/puppet/run/agent.pid
-  else
-    pidfile=/var/run/puppet/agent.pid
-  fi
-  [ -e ${pidfile} ]||pidfile=$($PUPPET config print pidfile --section agent)
+  pidfile=/var/run/puppet/agent.pid
+  [ -f ${pidfile} ]||pidfile=/var/lib/puppet/run/agent.pid
+  # This will probably lie to you if you're not root
+  [ -f ${pidfile} ]||pidfile=$($PUPPET config print pidfile --section agent)
   # if there is a pidfile tell me the pid, else fail
   [ -f ${pidfile} ]&&pid=$(cat ${pidfile})||result 4
+
   # see if the process is running
   #[ "$(ps -p ${pid} | wc -l)" = "2" ] ||result 4
   # test if the pid we found in the pidfile is puppet:
