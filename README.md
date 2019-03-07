@@ -81,7 +81,7 @@ Parses the output of nagiostats and submits as a passive check.  Note that this 
 
 ### check_process_cpu.pl
 
-Gets cpu usage information out of procstat for a named process.  Can use sudo to run as non-root, but monitor processes belonging to root.  Uses --libxo options that require FreeBSD 10+.
+Gets cpu usage information out of procstat for a named process.  Can use sudo to run as non-root, but monitor processes belonging to root.  Uses --libxo options that require FreeBSD 10+ if run on FreeBSD.  Uses /proc on Linux.
 
 ### check_puppet.sh 
 

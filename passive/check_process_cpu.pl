@@ -5,6 +5,7 @@ use strict;
 use JSON;
 use Getopt::Std;
 use Data::Dumper;
+use POSIX qw(sysconf);
 
 ###############################################################################
 ###############################################################################
@@ -27,12 +28,11 @@ use Data::Dumper;
 ## OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE             ##
 ###############################################################################
 ## V. 1.0.0: Initial release                                        20181005 ##
+## V. 1.0.1: Round off perfdata since nagiosgraph can't use DDERIVE 20181012 ##
+## V. 1.1.0: Add linux support with /proc                           20190228 ##
 ###############################################################################
-## TODO:                                                                     ##
-## Parse /proc for linux support                                             ##
-###############################################################################
-my $version = '1.0.0';
-my $version_date = '2018-10-05';
+my $version = '1.1.0';
+my $version_date = '2019-02-28';
 
 
 ###############################################################################
@@ -43,14 +43,15 @@ my %opt;
 my %conf = (
 	debug 			=> 0,
 	service			=> 'PROC_CPU',
-	hostname		=> qx(hostname),
-	multiplexer		=> qx(which nsca_multiplexer.sh),
+	hostname		=> qx(hostname).'',
+	multiplexer		=> qx(which nsca_multiplexer.sh).'',
 	crit			=> 100,
 	warn			=> 10, 
 	program			=> '',
 	tmpdir			=> '/var/tmp/',
 	file			=> '',
 	sudo			=> '',
+	clk_tck			=> 100,
 );
 chomp $conf{hostname};
 chomp $conf{multiplexer};
@@ -116,10 +117,10 @@ sub report ($$@)
 	}
 	
 	#printout
+	print join "\t", $conf{hostname}, $conf{service}, $ret, $prefix.$text.$perfstring."\n";
 	open MX, '|-', $conf{multiplexer} or return $!;
 	print MX join "\t", $conf{hostname}, $conf{service}, $ret, $prefix.$text.$perfstring."\n";
 	close MX;
-	print join "\t", $conf{hostname}, $conf{service}, $ret, $prefix.$text.$perfstring."\n";
 	return 0;
 }
 
@@ -186,23 +187,42 @@ $pids = qx($conf{sudo}pgrep $conf{program});
 $pids =~ s/\n/ /g;
 verb 1, "Pids are:", $pids;
 
-verb 1, "Getting data...";
-verb 2, "cmd: ($conf{sudo}procstat --libxo json -r ${pids})";
-$rawdata = qx($conf{sudo}procstat --libxo json -r ${pids});
-$rawdata =~ s/\n//g;
-$data = decode_json($rawdata);
-verb 1, "...Done";
-verb 2, Dumper $data;
-
-for my $pid (sort keys %{$data->{procstat}{rusage}})
+if ( qx(uname) =~ /FreeBSD/ )
 {
-	my ( $utime_p, $stime_p );
-	#get current time counter:
-	$utime_p = str2sec($data->{procstat}{rusage}{$pid}{'user time'});
-	$utime_p and $utime += $utime_p;
-	$stime_p = str2sec($data->{procstat}{rusage}{$pid}{'system time'});
-	$stime_p and $stime += $stime_p;
-	verb 1, "Got times for process:", $pid, $stime_p, $utime_p;
+	verb 1, "Getting data...";
+	verb 2, "cmd: ($conf{sudo}procstat --libxo json -r ${pids})";
+	$rawdata = qx($conf{sudo}procstat --libxo json -r ${pids});
+	$rawdata =~ s/\n//g;
+	$data = decode_json($rawdata);
+	verb 1, "...Done";
+	verb 2, Dumper $data;
+
+	for my $pid (sort keys %{$data->{procstat}{rusage}})
+	{
+		my ( $utime_p, $stime_p );
+		#get current time counter:
+		$utime_p = str2sec($data->{procstat}{rusage}{$pid}{'user time'});
+		$utime_p and $utime += $utime_p;
+		$stime_p = str2sec($data->{procstat}{rusage}{$pid}{'system time'});
+		$stime_p and $stime += $stime_p;
+		verb 1, "Got times for process:", $pid, $stime_p, $utime_p;
+	}
+}
+else
+{
+	for my $pid (split / /, $pids)
+	{
+		my ( $utime_p, $stime_p, @statline );
+		$conf{clk_tck} = POSIX::sysconf(POSIX::_SC_CLK_TCK());
+		verb 2, "Tick rate:", $conf{clk_tck};
+		open FH, '<', '/proc/'.$pid.'/stat';
+		@statline = split(' ', readline(FH));
+		$utime_p = $statline[13] / $conf{clk_tck};
+		$utime_p and $utime += $utime_p;
+		$stime_p = $statline[14] / $conf{clk_tck};
+		$stime_p and $stime += $stime_p;
+		verb 1, "Got times for process:", $pid, $stime_p, $utime_p;
+	}
 }
 
 #get old times:
@@ -222,6 +242,7 @@ else
 	$oldutime = 0;
 	$oldstime = 0;
 }
+verb 1, "Got old times:", $oldutime, $oldstime;
 verb 1, "Writing times to file...";
 #write current times to file
 open FH, '>', $conf{file} or die "Could not open tmp file for writing $!\n";
@@ -231,6 +252,7 @@ close FH;
 verb 1, "...Done";
 
 $delta = $utime - $oldutime + $stime - $oldstime;
+verb 1, "Compare: ${delta};$conf{warn};$conf{crit};;";
 
 if ( $delta >= $conf{crit} )
 {
@@ -244,5 +266,8 @@ else
 {
 	$ret = 0;
 }
+#round off for perfdata
+$utime =~ s/^(\d+)(?:\.\d+)$/$1/;
+$stime =~ s/^(\d+)(?:\.\d+)$/$1/;
 
 report($ret, "CPU used by $conf{program} was ${delta}s", "utime=${utime}c", "stime=${stime}c");
