@@ -21,9 +21,10 @@
 ###############################################################################
 ## V. 1.0.0: Initial version                                        20160715 ##
 ## V. 1.0.1: Release under ISC license                              20160721 ##
+## V. 1.1.0: fix host command for getting master serial             20190531 ##
 ###############################################################################
-version='1.0.1'
-version_date='2016-07-21'
+version='1.1.0'
+version_date='2019-05-31'
 
 ###############################################################################
 ## Global variables
@@ -89,7 +90,7 @@ master=$(echo $line | cut -d ' ' -f 5)
 serial=$(echo $line | cut -d ' ' -f 7)
 [ $verbose -gt 0 ] && echo "serial for zone is $serial"
 
-mline=$(host -s -t SOA $zone $host | tail -n 1)
+mline=$(host -s -t SOA $zone $master | tail -n 1)
 [ $verbose -gt 0 ] && echo "got response from master: $mline"
 if [ "$mline" = '' ] 
 then 
