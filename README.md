@@ -11,7 +11,7 @@ Unless otherwise specified, all scripts are freely available under a permissive 
 
 ## Active Checks
 
-Active checks are known to work on FreeBSD 9.3 - 11.0 RC1
+Active checks are known to work on FreeBSD 11.x - 12.0
 
 ### check_network_status.pl 
 
@@ -37,6 +37,8 @@ Requires PHP and  MySQL dbd
 
 Pulls status information from influxdb.  Checks heap memory usage.
 
+This has not been used in some time, so YYMV.
+
 ### nagios_active_puppet.sh 
 
 Uses the REST API to check if a puppetmaster is running.  Works with Puppet 3.x.x, has not been tested against 4.x.x
@@ -45,7 +47,7 @@ Uses the REST API to check if a puppetmaster is running.  Works with Puppet 3.x.
 
 Passive checks run through NSCA (use nsca_multiplexer.sh by default)
 
-Checks are known to work on FreeBSD 9.3 - 11.0 RC1, some are tested on CentOS 7.
+Checks are known to work on FreeBSD 11.x - 12.0, but many will work back to 9.x.  Some work on CentOS 7.
 
 check_gpu_stats.pl is only tested on CentOS 7.
 
