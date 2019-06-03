@@ -93,6 +93,10 @@ This check is not our original work.  The author is Alexander Swen (a@swen.nu). 
 
 Checks the output of smartctl and reports it to nagios
 
+### gdnsd_stats.pl
+
+Get statistics out of the http statistics interface for gdnsd 2.x  In gdnsd 3.x this is replaced with a control socket, which will need updates.
+
 ### nagios_file_age_check.sh 
 
 Checks the age of a file using stat, warns if the mtime is too old.  Useful for watching replication by changing a file on the master from cron, and watching the age on the slave.
