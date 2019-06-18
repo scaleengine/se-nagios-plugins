@@ -23,16 +23,21 @@
 ###############################################################################
 ## V. 1.0.0: Initial release                                        20150723 ##
 ## V. 1.0.1: Release under ISC license                              20160721 ##
+## V. 2.0.0: Don't do the silly % splitting, just shift the svc off 20090612 ##
 ###############################################################################
 
 
 multiplexer=$(which nsca_multiplexer.sh)
 hostname=$(hostname)
 
-service=$( echo "$*" | cut -d % -f 1)
-cmd=$( echo "$*" | cut -d % -f 1)
+# to use:
+# /path/to/nagios_passive_wrapper.sh SVC_NAME /path/to/active/check.sh -a -b -c
 
-output=$($cmd)
+service=$1
+shift
+
+output=$($@)
 extcode=$?
 
+printf "%s\t%s\t%s\t%s" "$hostname" "$service" "$extcode" "$output"
 printf "%s\t%s\t%s\t%s" "$hostname" "$service" "$extcode" "$output" | $multiplexer
