@@ -91,6 +91,10 @@ Parses puppet's last_run_state.yaml file to determine if the run failed.  Note t
 
 This check is not our original work.  The author is Alexander Swen (a@swen.nu).  We've modified it to run as a passive check, and to work on FreeBSD in keeping with the terms of the original licence (ISC)
 
+### check_zpool.sh
+
+New zpool health check script.  This one takes a list of pools to check, and submits all as seperate checks.
+
 ### check_smart.pl
 
 Checks the output of smartctl and reports it to nagios
