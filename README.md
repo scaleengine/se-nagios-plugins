@@ -98,7 +98,9 @@ New zpool health check script.  This one takes a list of pools to check, and sub
 ### check_smart.pl
 
 Checks the output of smartctl or sysutils/smart and reports it to nagios
+
 sysutils/smart only works on FreeBSD and does not parse SCSI drive output yet.
+
 Use -s to force selection of the smart utility if needed, since it will prefer sysutils/smart on FreeBSD.
 
 ### gdnsd_stats.pl
