@@ -25,29 +25,41 @@ use Getopt::Std;
 ## ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF   ##
 ## OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE             ##
 ###############################################################################
-## V. 1.0.0: Initial release                                        20171012 ##
+## V. 1.0.0: Initial release                                        20171027 ##
+## V. 1.1.0: Add logic to parse SMART data from SAS drives          20171110 ##
+## V. 1.2.0: Add type flag to support passing -d to smartctl        20181129 ##
+## V. 2.0.0: Add support for sysutils/smart                         20190716 ##
 ###############################################################################
-my $version = '1.0.0';
-my $version_date = '2017-10-12';
+## TODO                                                                      ##
+## Handle SAS counters using sysutils/smart                                  ##
+###############################################################################
+my $version = '2.0.0';
+my $version_date = '2019-07-16';
 
 
 ###############################################################################
 ## Global variables
 ###############################################################################
 
+$ENV{PATH} = '/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/home/nagmon/tools';
+
 my %conf = (
-	warn		=> 35,
-	crit		=> 40,
+	warn		=> 45,
+	crit		=> 75,
+	iwarn		=> 100,
+	icrit		=> 300,
 	debug		=> 0,
 	disks		=> [],
 	hostname	=> qx(hostname),
 	service		=> 'SMART',
+	type		=> '',
 );
 chomp $conf{hostname};
 
 my %opt;
-my $smartctl = qx(which smartctl);
-chomp $smartctl;
+my $sudo = qx(which sudo);
+chomp $sudo;
+my $smartcmd = '';
 my $multiplexer = qx(which nsca_multiplexer.sh);
 chomp $multiplexer;
 
@@ -63,7 +75,7 @@ my @errors = ();
 
 sub HELP_MESSAGE
 {
-	print "$0 usage:\n\t$0 [-v|-d] [-H hostname] [-S servicename] [-w warn_temp] [-c crit_temp] -D ada1,da0,...\n";
+	print "$0 usage:\n\t$0 [-v|-d] [-H hostname] [-S servicename] [-w warn_temp] [-c crit_temp] [-t controller_type] [-s smart_command] -D ada1,da0,...\n";
 	exit;
 }
 
@@ -81,45 +93,120 @@ sub verb ($@)
 	return 1;
 }
 
-sub get_smart ($) {
-    my %value;
+sub get_smartctl ($) 
+{
+	my %value;
 	my $dev = $_[0];
-	my $command = qq($smartctl -a $dev);
+	my $command = qq($sudo $smartcmd $conf{type} -a $dev);
 	my $r;
 
 	verb 1, "\nGetting smart data for $dev...";
-    $r = open ( SMART, '-|', $command );
+	$r = open ( SMART, '-|', $command );
 	if ( ! $r )
 	{ 
 		verb 0, qq(ERROR getting smart data from disk $dev);
 		return (); 
 	}
 
-    while ( <SMART> ) 
+	while ( <SMART> ) 
 	{
 		verb 2, "Line:", $_;
-        if ( /SMART overall-health self-assessment test result: (.*)$/ ) 
+		if ( /SMART overall-health self-assessment test result: (.*)$/ or /^SMART Health Status: (.*)$/ )
 		{
 			verb 1, "Found overall health test: $1";
-            $value{'health'} = $1;
+			$value{'health'} = $1;
 		} 
-		elsif ( /Temperature_Celsius/ ) 
+		elsif ( /Temperature_Celsius\s+\w+(?:\s+\d+){3}(?:\s+[\w\-]+){3}\s+(\d+)/  or /Current Drive Temperature:\s+(\d+) C/ )
 		{
-	    	$value{'temp'} = (split(/\s+/))[9];
+			#$value{'temp'} = (split(/\s+/))[9];
+			$value{'temp'} = $1;
 			verb 1, "Found temperature: $value{temp}";
-        } 
-		elsif ( /\d+\s+(\w+).*\s+(\d+)\s+(\d+)\s+(\d+)\s+Pre-fail/ ) 
-		{
-	    	verb 1, qq(found pre-fail smart value: $1 $2 $3 $4\n);
-	    	$value{v}{$1}{value} = $2;
-	    	$value{v}{$1}{worst} = $3;
-	    	$value{v}{$1}{thresh} = $4;
 		} 
-    }
+		elsif ( /^\s*(5|196|197|198)\s+(\w+).*\s+(\d+)\s+(\d+)\s+(\d+)\s+[\w\-]+\s+[\w\-]+\s+[\w\-]+\s+(\d+)/ ) 
+		{
+			# 5,196,197,198 are the smart values we consider to be failure indicators
+			verb 1, qq(found pre-fail smart value: $1 $2 $6\n);
+			$value{v}{$1}{name} = $2;
+			$value{v}{$1}{value} = $3;
+			$value{v}{$1}{worst} = $4;
+			$value{v}{$1}{thresh} = $5;
+			$value{v}{$1}{raw} = $6;
+		} 
+		elsif ( /Elements in grown defect list:\s+(\d+)/ ) #SAS reallocated sectors
+		{
+			$value{v}{dl}{name} = 'Defect List';
+			$value{v}{dl}{raw} = $1;
+			verb 1, "Found SAS defect list: $1 items";
+		}
+		elsif ( /^(read|write|verify):(?:\s+[\d\.]+){6}\s+(\d+)/ ) #SAS ECC list, last column is uncorrectable
+		{
+			$value{v}{unc}{name} = 'Uncorrectable Errors';
+			defined $value{v}{unc}{raw} or $value{v}{unc}{raw} = 0;
+			$value{v}{unc}{raw} += $2;
+			verb 1, "Found SAS $1 errors: $2 uncorrectable";
+		}
+	}
 
-    close SMART;
+	close SMART;
 	verb 1, "...Done\n";
-    return %value;
+	return %value;
+}
+
+sub get_smart ($)
+{
+	my %value;
+	my $dev = $_[0];
+	my $command = qq($sudo $smartcmd $conf{type} $dev);
+	my $r;
+
+	verb 1, "\nGetting smart data for $dev...";
+	$r = open ( SMART, '-|', $command );
+	if ( ! $r )
+	{ 
+		verb 0, qq(ERROR getting smart data from disk $dev);
+		return (); 
+	}
+
+	while ( <SMART> ) 
+	{
+		verb 2, "Line:", $_;
+		chomp;
+		my @row = split / /, $_;
+		# smart does not do an overall health check (yet)
+		$value{'health'} = 'OK';
+		
+		if ( $row[1] eq '194' or $row[1] eq '190' )
+		{
+			$value{'temp'} = ($row[2] % 256); # Temperature is a packed value with the lowest byte being the current temp.
+			verb 1, "Found temperature: $value{temp}";
+		} 
+		if ( $row[1] eq '5' or $row[1] eq '196' or $row[1] eq '197' or $row[1] eq '198' )
+		{
+			# 5,196,197,198 are the smart values we consider to be failure indicators
+			verb 1, qq(found pre-fail smart value:), $row[1], $row[2];
+			$value{v}{$row[1]}{name} = $row[1];
+			# Sometimes these could also be a packed value, assume anything over 2^16 is packed
+			verb 1, "Unpacked value:", ($row[2] % 65536) if ( $row[2] >= 65536 );
+			$value{v}{$row[1]}{raw} = $row[2] % 65536;
+		} 
+		#elsif ( /Elements in grown defect list:\s+(\d+)/ ) #SAS reallocated sectors
+		#{
+		#	$value{v}{dl}{name} = 'Defect List';
+		#	$value{v}{dl}{raw} = $1;
+		#	verb 1, "Found SAS defect list: $1 items";
+		#}
+		#elsif ( /^(read|write|verify):(?:\s+[\d\.]+){6}\s+(\d+)/ ) #SAS ECC list, last column is uncorrectable
+		#{
+		#	$value{v}{unc}{name} = 'Uncorrectable Errors';
+		#	defined $value{v}{unc}{raw} or $value{v}{unc}{raw} = 0;
+		#	$value{v}{unc}{raw} += $2;
+		#	verb 1, "Found SAS $1 errors: $2 uncorrectable";
+		#}
+	}
+
+	close SMART;
+	verb 1, "...Done\n";
+	return %value;
 }
 
 sub submit_nsca ($$) 
@@ -136,7 +223,7 @@ sub submit_nsca ($$)
 ## Getopts
 ##############################################################################
 
-getopts 'hvVdw:c:D:H:S:', \%opt;
+getopts 'hvVdw:c:D:H:S:W:C:T:s:', \%opt;
 defined $opt{h} and HELP_MESSAGE;
 defined $opt{V} and VERSION_MESSAGE;
 
@@ -145,26 +232,48 @@ defined $opt{d} and $conf{debug} = 2;
 
 defined $opt{w} and $conf{warn} = $opt{w};
 defined $opt{c} and $conf{crit} = $opt{c};
+defined $opt{W} and $conf{iwarn} = $opt{W};
+defined $opt{C} and $conf{icrit} = $opt{C};
 
 defined $opt{H} and $conf{hostname} = $opt{H};
 defined $opt{S} and $conf{service} = $opt{S};
+
+defined $opt{T} and $conf{type} = '-d '.$opt{T};
+defined $opt{s} and $smartcmd = $opt{s};
 
 defined $opt{D} or die "ERROR: You must specify a list of disks to check with -D\n";
 verb 1, "Got disks: $opt{D}";
 for my $d (split /,/, $opt{D})
 {
-	if (-c "/dev/${d}")
+	if ( $d eq 'cd0' )
+	{
+		verb 2, "Skipping cd drive";
+		next;
+	}
+	if (-c "/dev/${d}" or -b "/dev/${d}" )
 	{
 		verb 2, "Adding /dev/${d} to list of disks";
 		push @{$conf{disks}}, "/dev/${d}"; 
 	}
 	else
 	{
-		die "ERROR: disk /dev/${d} is not a character device\n";
+		die "ERROR: disk /dev/${d} is not a character or block device\n";
 	}
 }
 verb 1, "Read %conf from args";
 
+if ( $smartcmd eq '' and substr(qx(uname), 0, 7) eq 'FreeBSD' )
+{
+	$smartcmd = qx(which smart);
+	chomp $smartcmd;
+	verb 1, "found smart:", $smartcmd;
+}
+if ( $smartcmd eq '' )
+{
+	$smartcmd = qx(which smartctl);
+	chomp $smartcmd;
+	verb 1, "found smartctl:", $smartcmd;
+}
 
 ##############################################################################
 ## Main program
@@ -173,7 +282,18 @@ verb 1, "Read %conf from args";
 
 foreach my $disk (@{$conf{disks}})
 {
-	my %vals = get_smart($disk);
+	my %vals;
+	if ( $smartcmd =~ /smart$/ )
+	{
+		verb 1, "Smart comamnd is $smartcmd, running get_smart";
+		%vals = get_smart($disk);
+	}
+	else
+	{
+		verb 1, "Smart comamnd is $smartcmd, running get_smartctl";
+		%vals = get_smartctl($disk);
+	}
+	my $perf = "$disk=";
 
 	if ( ! scalar %vals )
 	{
@@ -184,7 +304,7 @@ foreach my $disk (@{$conf{disks}})
 		next;
 	}
 
-	if ( $vals{health} ne "PASSED" )
+	if ( $vals{health} !~ /PASSED|OK/ )
 	{
 		verb 1, "Overall health check returned $vals{health}";
 		$warning = 1;
@@ -193,7 +313,7 @@ foreach my $disk (@{$conf{disks}})
 
 	if ( $vals{temp} )
 	{
-		push @perfdata, qq($disk=$vals{temp}); 
+		$perf .= qq(temp:$vals{temp}); 
 		if ( $vals{temp} >= $conf{warn} )
 		{
 			$warning = 1;
@@ -208,20 +328,27 @@ foreach my $disk (@{$conf{disks}})
 	}
 	else
 	{
-		push @perfdata, qq($disk=00);
-		$warning = 1;
-		push @errors, qq(Could not read temp for $disk);
+		$perf .= qq(temp:00);
+		verb 1, qq(Could not read temp for $disk);
 	}
 
-	for my $item ( keys %{$vals{v}} )
+	for my $item ( sort keys %{$vals{v}} )
 	{
-		if ( $vals{v}{$item}{value} <= $vals{v}{$item}{thresh} )
+		if ( $vals{v}{$item}{raw} >= $conf{icrit} )
 		{
-			verb 1, qq(Item $item on disk $disk is over the threshold ($vals{v}{$item}{value}/$vals{v}{$item}{thresh}));
+			verb 1, qq(Item $vals{v}{$item}{name} on disk $disk is over icrit ($vals{v}{$item}{raw}/$conf{icrit}));
 			$critical = 1;
-			push @errors, qq($disk: $item - $vals{v}{$item}{value});
+			push @errors, qq($disk: $item - $vals{v}{$item}{raw});
 		}
+		elsif ( $vals{v}{$item}{raw} >= $conf{iwarn} )
+		{
+			verb 1, qq(Item $vals{v}{$item}{name} on disk $disk is over iwarn ($vals{v}{$item}{raw}/$conf{iwarn}));
+			$warning = 1;
+			push @errors, qq($disk: $item - $vals{v}{$item}{raw});
+		}
+		$perf .= ",${item}:$vals{v}{$item}{raw}";
 	}
+	push @perfdata, $perf;
 }
 
 verb 0, "warning:", $warning, "critical:", $critical, "unknown:", $unknown;
